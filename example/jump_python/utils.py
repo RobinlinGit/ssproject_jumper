@@ -19,12 +19,12 @@ import re
 # hyper-parameters
 wc_top = 0
 wc_left = 0
-wc_width = 540
-wc_height = 960
+wc_width = 1080
+wc_height = 1920
 
 piece_base_height_1_2 = 50
 piece_body_width = 50
-press_coefficient = 4.10
+press_coefficient = 1.392
 
 
 def rgb2hsv(r, g, b):
@@ -161,7 +161,7 @@ def find_piece_and_board(im):
                 if abs(j - piece_x) < piece_body_width:
                     continue
                 if (abs(pixel[0] - last_pixel[0]) + abs(pixel[1] - last_pixel[1]) + abs(pixel[2] - last_pixel[2])
-                    > 10) and (abs(pixel[0] - r) + abs(pixel[1] - g) + abs(pixel[2] - b) > 10):
+                        > 10) and (abs(pixel[0] - r) + abs(pixel[1] - g) + abs(pixel[2] - b) > 10):
                     if left_value == j:
                         left_count = left_count + 1
                     else:
@@ -180,7 +180,7 @@ def find_piece_and_board(im):
                 if abs(j - piece_x) < piece_body_width:
                     continue
                 if (abs(pixel[0] - last_pixel[0]) + abs(pixel[1] - last_pixel[1]) + abs(pixel[2] - last_pixel[2])
-                    > 10) and (abs(pixel[0] - r) + abs(pixel[1] - g) + abs(pixel[2] - b) > 10):
+                        > 10) and (abs(pixel[0] - r) + abs(pixel[1] - g) + abs(pixel[2] - b) > 10):
                     if right_value == j:
                         right_count = left_count + 1
                     else:
@@ -230,8 +230,3 @@ def jump(distance):
     # time.sleep(press_time)
     # pyautogui.mouseUp()
     return press_time
-
-
-
-
-
