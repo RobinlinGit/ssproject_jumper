@@ -1,71 +1,103 @@
-import sys
+import importlib
 import os
-import matlab.engine
-import check_result.check_result as check
-import cv2
+import shutil
+import subprocess
+import sys
+import time
+import zipfile
 
-# print(sys.argv)
-mType = sys.argv[1]
-dis = 0.0  # 学生返回的距离
+# Prepare zip files
+uploads = []
+for upload_file in os.listdir("./uploads"):
+    if upload_file.endswith(".zip"):
+        uploads.append(upload_file)
 
-if mType == '2' or mType == '5':
-    eng = matlab.engine.start_matlab()
+# Prepare screenshots
+screenshots = []
+for screenshot in os.listdir("./pictures"):
+    if screenshot.endswith(".png"):
+        screenshots.append(screenshot)
 
-while True:
-    if mType == '0' or mType == '1' or mType == '2':
-        os.system(
-            "cd ../dependency/platform-tools-windows && adb.exe shell screencap -p /sdcard/autojump.png")
-        os.system(
-            "cd ../dependency/platform-tools-windows && adb.exe pull /sdcard/autojump.png ../../test")
+# Loop over every student
+for upload_file in uploads:
+    with zipfile.ZipFile("./uploads/" + upload_file, "r") as zip_ref:
+        zip_ref.extractall(".")
+
+    # Check file structure
+    student_id = upload_file[:upload_file.index('.')]
+    if os.path.isdir('./' + student_id + '/python'):
+        lang = 'python'
+        work_dir = './' + student_id + '/python'
+    elif os.path.isdir('./' + student_id + '/matlab'):
+        lang = 'matlab'
+        work_dir = './' + student_id + '/matlab'
+    elif os.path.isdir('./' + student_id + '/cpp'):
+        lang = 'cpp'
+        work_dir = './' + student_id + '/cpp'
     else:
-        os.system(
-            "cd ../dependency/platform-tools-macos && ./adb shell screencap -p /sdcard/autojump.png")
-        os.system(
-            "cd ../dependency/platform-tools-macos && ./adb pull /sdcard/autojump.png ../../test")
-    img = cv2.imread("./autojump.png")
-    score, pos = check.check_result(img)
-    if score >= 0:
-        with open("./result.txt", 'a') as f:
-            f.write("score:", score)
-            f.write("\n")
-        if mType == '0' or mType == '1' or mType == '2':
-            os.system("cd ../dependency/platform-tools-windows && adb.exe shell input tap " +
-                      str(pos[0])+' '+str(pos[1]))
-        else:
-            os.system("cd ../dependency/platform-tools-macos && ./adb shell input tap " +
-                      str(pos[0])+' '+str(pos[1]))
+        print('Broken upload structure! Exiting...')
+        exit()
 
-    if mType == '0'or mType == '3':
-        # python
-        print("python start")
-        import jump_python.jumper as j
-        dis = j.jumper()
-        # print(dis)
-        pass
-    elif mType == '1' or mType == '4':
-        # cpp
-        if os.path.isfile("./jump_cpp/output.txt"):
-            os.remove("./jump_cpp/output.txt")
-        if mType == '1':
-            os.system("cd jump_cpp && jumper.exe")
-        else:
-            os.system("cd jump_cpp && ./jumper")
-        with open("./jump_cpp/output.txt") as f:
-            dis = f.readlines(0)[0]
-        pass
-    elif mType == '2' or mType == '5':
-        # matlab
-        eng.addpath("./jump_matlab", nargout=0)
-        dis = eng.jumper()
-        pass
+    # Check test platform
+    platform = sys.platform
+    if platform != "win32" and platform != "darwin":
+        print("Unsupported platform. Exiting...")
+        exit()
 
-# dis 为学生返回的距离
-    print(dis)
-    dis = float(dis)
-    time = int(dis * 1.392)
-    if mType == '0' or mType == '1' or mType == '2':
-        os.system(
-            "cd ../dependency/platform-tools-windows && adb.exe shell input swipe 800 800 800 800 {0}".format(time))
+    # Check source files
+    engine = None
+    if lang == "matlab":
+        if not os.path.isfile(work_dir + '/jumper.m'):
+            print('Source code does not exist! Exiting...')
+            exit()
+        import matlab.engine
+        engine = matlab.engine.start_matlab()
+        engine.addpath(work_dir)
+    elif lang == "python":
+        if not os.path.isfile(work_dir + '/jumper.py'):
+            print('Source code does not exist! Exiting...')
+            exit()
+        for f in os.listdir(work_dir):
+            shutil.copy(work_dir + '/' + f, './' + student_id)
+        jumper = importlib.import_module(student_id + '.jumper')
     else:
-        os.system(
-            "cd ../dependency/platform-tools-macos && ./adb shell input swipe 800 800 800 800 {0}".format(time))
+        if platform == "win32":
+            if not os.path.isfile(work_dir + '/jumper.exe'):
+                print('Executable file does not exist! Exiting...')
+                exit()
+        if platform == "darwin":
+            if not os.path.isfile(work_dir + '/jumper'):
+                print('Executable file does not exist! Exiting...')
+                exit()
+
+    # Begin test
+    start_time = time.time()
+    error_in_total = 0
+    for screenshot in screenshots:
+        shutil.copy2('./pictures/' + screenshot, work_dir + '/autojump.png')
+        original_distance = screenshot.split('_')[2]
+        calculated_distance = 0
+        if lang == "python":
+            os.chdir(work_dir)
+            calculated_distance = jumper.jumper()
+            os.chdir('../../')
+        elif lang == "cpp":
+            if platform == "win32":
+                calculated_distance = subprocess.getoutput(
+                    'cd ' + work_dir + ' && jumper.exe')
+            if platform == "darwin":
+                calculated_distance = subprocess.getoutput(
+                    'cd ' + work_dir + ' && ./jumper')
+        else:
+            calculated_distance = engine.jumper()
+
+        error = abs(int(calculated_distance) - int(original_distance))
+        error_in_total = error_in_total + error
+
+    # Print mean error
+    mean_error = error_in_total / len(screenshots)
+    print(student_id + ' mean distance error ' + str(mean_error) +
+          ' executed in ' + str(round(time.time() - start_time, 2)) + 's')
+
+    # Remove temp dir
+    shutil.rmtree(student_id)
